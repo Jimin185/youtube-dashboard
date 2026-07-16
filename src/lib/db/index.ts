@@ -98,6 +98,16 @@ const DDL = [
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS templates (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    name TEXT NOT NULL,
+    subject TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_templates_user ON templates(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_prospects_user ON prospects(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_prospects_email ON prospects(contact_email)`,
   `CREATE INDEX IF NOT EXISTS idx_outbounds_account ON outbounds(account_id)`,

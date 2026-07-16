@@ -296,8 +296,9 @@ export default function ProspectsPanel({ onCompose, refreshKey, onCountChange }:
               onCompose(
                 selectedItems.map((p) => ({
                   id: p.id,
-                  name: p.contactName || p.clientName,
+                  name: p.contactName,
                   email: p.contactEmail,
+                  client: p.clientName,
                 }))
               )
             }

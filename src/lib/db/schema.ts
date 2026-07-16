@@ -97,8 +97,22 @@ export const prospects = pgTable("prospects", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
 });
 
+// 자주 쓰는 메일 문구 템플릿
+export const templates = pgTable("templates", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  name: text("name").notNull(),
+  subject: text("subject").notNull().default(""),
+  body: text("body").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type Prospect = typeof prospects.$inferSelect;
+export type MailTemplate = typeof templates.$inferSelect;
 export type MailAccount = typeof mailAccounts.$inferSelect;
 export type Outbound = typeof outbounds.$inferSelect;
 export type MailMessage = typeof messages.$inferSelect;

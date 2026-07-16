@@ -360,8 +360,9 @@ export default function Dashboard({ userName }: { userName: string }) {
                     setCompose({
                       targets: selectedItems.map((i) => ({
                         id: i.id,
-                        name: i.contactName || i.clientName,
+                        name: i.contactName,
                         email: i.contactEmail,
+                        client: i.clientName,
                       })),
                       mode: "outbound",
                     })
@@ -552,7 +553,9 @@ export default function Dashboard({ userName }: { userName: string }) {
           onCompose={(item) => {
             setDetail(null);
             setCompose({
-              targets: [{ id: item.id, name: item.contactName || item.clientName, email: item.contactEmail }],
+              targets: [
+                { id: item.id, name: item.contactName, email: item.contactEmail, client: item.clientName },
+              ],
               mode: "outbound",
             });
           }}

@@ -31,10 +31,26 @@ export function nextReminderDate(o: Outbound): Date | null {
   return new Date(new Date(o.firstSentAt).getTime() + days * DAY_MS);
 }
 
-/** 템플릿 변수 치환: {{담당자}}, {{클라이언트}}, {{제목}} */
+/**
+ * 템플릿 변수 치환. 두 가지 표기 모두 지원:
+ *  - [기업명] [회사명] [클라이언트] → 클라이언트명 (없으면 이메일 도메인에서 유추)
+ *  - [담당자] [담당자명] [이름]     → 담당자 이름 (없으면 "담당자")
+ *  - {{...}} 표기도 동일하게 동작
+ */
 export function renderTemplate(template: string, o: Outbound): string {
+  const client =
+    o.clientName || o.contactEmail.split("@")[1]?.split(".")[0] || "";
+  const contact = o.contactName || "담당자";
   return template
-    .replaceAll("{{담당자}}", o.contactName || "담당자")
-    .replaceAll("{{클라이언트}}", o.clientName || o.contactEmail.split("@")[1] || "")
+    .replace(/\[\s*(담당자명?|이름)\s*\]|\{\{\s*(담당자명?|이름)\s*\}\}/g, contact)
+    .replace(/\[\s*(기업명|회사명?|클라이언트)\s*\]|\{\{\s*(기업명|회사명?|클라이언트)\s*\}\}/g, client)
     .replaceAll("{{제목}}", o.subject);
+}
+
+/** 템플릿에 기업명/담당자 변수가 들어있는지 (발송 전 경고용) */
+export function templateVars(template: string): { client: boolean; contact: boolean } {
+  return {
+    client: /\[\s*(기업명|회사명?|클라이언트)\s*\]|\{\{\s*(기업명|회사명?|클라이언트)\s*\}\}/.test(template),
+    contact: /\[\s*(담당자명?|이름)\s*\]|\{\{\s*(담당자명?|이름)\s*\}\}/.test(template),
+  };
 }
