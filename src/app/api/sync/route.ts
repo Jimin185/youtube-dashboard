@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { getDb, ensureSchema, schema } from "@/lib/db";
 import { getUserId } from "@/lib/session";
 import { syncAccount } from "@/lib/mail/sync";
+import { reconcileProspects } from "@/lib/prospects";
 
 export const maxDuration = 300; // 메일 동기화는 오래 걸릴 수 있음
 
@@ -44,5 +45,7 @@ export async function POST(req: Request) {
   for (const account of accounts) {
     results.push(await syncAccount(account));
   }
-  return NextResponse.json({ results });
+  // 동기화로 새로 생긴 보낸 메일과 보낼 목록을 자동 연결
+  const movedProspects = await reconcileProspects(userId);
+  return NextResponse.json({ results, movedProspects });
 }

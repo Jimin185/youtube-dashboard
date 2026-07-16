@@ -34,7 +34,7 @@ export interface ThreadMessage {
   bodyHtml: string;
 }
 
-export type TabKey = "all" | "replied" | "second" | "third" | "closed";
+export type TabKey = "prospects" | "all" | "replied" | "second" | "third" | "closed" | "db";
 
 export function formatDate(d: string | null): string {
   if (!d) return "-";

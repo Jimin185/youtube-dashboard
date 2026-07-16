@@ -1,16 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import type { OutboundItem } from "./types";
+
+export interface ComposeTarget {
+  id: number;
+  name: string; // 담당자 또는 클라이언트 표시용
+  email: string;
+}
 
 interface Props {
-  targets: OutboundItem[];
+  targets: ComposeTarget[];
+  mode: "outbound" | "prospect"; // outbound: 기존 스레드에 답장/리마인드, prospect: 신규 발송
   onClose: () => void;
   onSent: () => void;
 }
 
 /** 단건/일괄 메일 작성 모달. {{담당자}}, {{클라이언트}} 변수가 수신자별로 치환된다. */
-export default function ComposeModal({ targets, onClose, onSent }: Props) {
+export default function ComposeModal({ targets, mode, onClose, onSent }: Props) {
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
@@ -22,12 +28,20 @@ export default function ComposeModal({ targets, onClose, onSent }: Props) {
       setError("본문을 입력하세요.");
       return;
     }
+    if (mode === "prospect" && !subject.trim()) {
+      setError("신규 발송은 제목이 필요합니다.");
+      return;
+    }
     setSending(true);
     setError("");
+    const payload =
+      mode === "prospect"
+        ? { prospectIds: targets.map((t) => t.id), subject, body }
+        : { outboundIds: targets.map((t) => t.id), subject, body };
     const res = await fetch("/api/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ outboundIds: targets.map((t) => t.id), subject, body }),
+      body: JSON.stringify(payload),
     });
     setSending(false);
     const data = await res.json().catch(() => ({}));
@@ -45,7 +59,7 @@ export default function ComposeModal({ targets, onClose, onSent }: Props) {
 
   const failedNames = (result?.failed ?? []).map((f) => {
     const t = targets.find((x) => x.id === f.outboundId);
-    return `${t?.contactEmail ?? f.outboundId}: ${f.error ?? "오류"}`;
+    return `${t?.email ?? ""}: ${f.error ?? "오류"}`;
   });
 
   return (
@@ -56,7 +70,8 @@ export default function ComposeModal({ targets, onClose, onSent }: Props) {
       >
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
           <h2 className="font-bold text-lg">
-            메일 보내기 <span className="text-blue-600">({targets.length}건)</span>
+            {mode === "prospect" ? "신규 메일 보내기" : "메일 보내기"}{" "}
+            <span className="text-blue-600">({targets.length}건)</span>
           </h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">
             ✕
@@ -69,8 +84,8 @@ export default function ComposeModal({ targets, onClose, onSent }: Props) {
             <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
               {targets.map((t) => (
                 <span key={t.id} className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs">
-                  {t.contactName || t.clientName || t.contactEmail.split("@")[0]}
-                  <span className="text-slate-400 ml-1">&lt;{t.contactEmail}&gt;</span>
+                  {t.name || t.email.split("@")[0]}
+                  <span className="text-slate-400 ml-1">&lt;{t.email}&gt;</span>
                 </span>
               ))}
             </div>
@@ -79,11 +94,17 @@ export default function ComposeModal({ targets, onClose, onSent }: Props) {
           {result === null ? (
             <>
               <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1.5">제목</label>
+                <label className="block text-xs font-medium text-slate-500 mb-1.5">
+                  제목 {mode === "prospect" && <span className="text-red-500">*</span>}
+                </label>
                 <input
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
-                  placeholder="비워두면 기존 메일에 'Re:' 답장으로 발송됩니다"
+                  placeholder={
+                    mode === "prospect"
+                      ? "예: {{클라이언트}} 유튜브 광고 제안드립니다"
+                      : "비워두면 기존 메일에 'Re:' 답장으로 발송됩니다"
+                  }
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -107,7 +128,7 @@ export default function ComposeModal({ targets, onClose, onSent }: Props) {
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
                   rows={10}
-                  placeholder={"안녕하세요 {{담당자}}님,\n\n{{클라이언트}} 관련하여 지난번 보내드린 제안 다시 한번 안내드립니다..."}
+                  placeholder={"안녕하세요 {{담당자}}님,\n\n{{클라이언트}} 마케팅 관련하여 제안드리고자 연락드렸습니다..."}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
                 />
                 <p className="text-xs text-slate-400 mt-1">
@@ -118,10 +139,13 @@ export default function ComposeModal({ targets, onClose, onSent }: Props) {
             </>
           ) : (
             <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2">
-              <p className="font-semibold text-emerald-600">✓ {result.sent}건 발송 완료</p>
+              <p className="font-semibold text-emerald-600">
+                ✓ {result.sent}건 발송 완료
+                {mode === "prospect" && result.sent > 0 && " — 보낸 목록으로 이동했습니다"}
+              </p>
               {failedNames.length > 0 && (
                 <div className="text-sm text-red-600">
-                  <p className="font-medium">{failedNames.length}건 실패:</p>
+                  <p className="font-medium">{failedNames.length}건 실패 (보낼 목록에 그대로 남아있어요):</p>
                   <ul className="list-disc ml-5 mt-1 space-y-0.5">
                     {failedNames.map((n, i) => (
                       <li key={i}>{n}</li>

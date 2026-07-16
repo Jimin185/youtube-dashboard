@@ -78,12 +78,19 @@ export async function sendToOutbounds(
   bodyTemplate: string
 ): Promise<SendItemResult[]> {
   const db = getDb();
-  const transporter = nodemailer.createTransport({
-    host: account.smtpHost,
-    port: account.smtpPort,
-    secure: account.smtpPort === 465,
-    auth: { user: account.username, pass: decrypt(account.passwordEnc) },
-  });
+  let transporter: ReturnType<typeof nodemailer.createTransport>;
+  try {
+    transporter = nodemailer.createTransport({
+      host: account.smtpHost,
+      port: account.smtpPort,
+      secure: account.smtpPort === 465,
+      auth: { user: account.username, pass: decrypt(account.passwordEnc) },
+    });
+  } catch (err) {
+    // 계정 정보 문제(복호화 실패 등) → 전건 실패 처리
+    const msg = err instanceof Error ? err.message : String(err);
+    return targets.map((o) => ({ outboundId: o.id, ok: false, error: `메일 계정 오류: ${msg}` }));
+  }
 
   const domain = account.email.split("@")[1] ?? "mail";
   const results: SendItemResult[] = [];

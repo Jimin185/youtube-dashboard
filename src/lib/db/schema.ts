@@ -77,7 +77,28 @@ export const messages = pgTable("messages", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
 });
 
+// 보낼 목록: 아직 메일을 보내지 않은 예비 연락처 (수기 입력 / 엑셀 업로드)
+// 메일 발송이 확인되면 status='sent' + outboundId 연결로 보낸 목록으로 넘어간다
+export const prospects = pgTable("prospects", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  clientName: text("client_name").notNull().default(""),
+  contactName: text("contact_name").notNull().default(""),
+  contactEmail: text("contact_email").notNull(),
+  officialEmail: text("official_email").notNull().default(""),
+  website: text("website").notNull().default(""),
+  memo: text("memo").notNull().default(""),
+  importance: integer("importance").notNull().default(0),
+  status: text("status").notNull().default("pending"), // pending | sent
+  outboundId: integer("outbound_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+});
+
 export type User = typeof users.$inferSelect;
+export type Prospect = typeof prospects.$inferSelect;
 export type MailAccount = typeof mailAccounts.$inferSelect;
 export type Outbound = typeof outbounds.$inferSelect;
 export type MailMessage = typeof messages.$inferSelect;

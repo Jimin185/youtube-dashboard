@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb, ensureSchema, schema } from "@/lib/db";
 import { syncAccount } from "@/lib/mail/sync";
+import { reconcileProspects } from "@/lib/prospects";
 
 export const maxDuration = 300;
 
@@ -17,8 +18,13 @@ export async function GET(req: Request) {
   const accounts = await db.select().from(schema.mailAccounts);
 
   const results = [];
+  const syncedUserIds = new Set<number>();
   for (const account of accounts) {
     results.push(await syncAccount(account));
+    syncedUserIds.add(account.userId);
+  }
+  for (const userId of syncedUserIds) {
+    await reconcileProspects(userId);
   }
   return NextResponse.json({ results });
 }

@@ -83,6 +83,23 @@ const DDL = [
     body_html TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS prospects (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    client_name TEXT NOT NULL DEFAULT '',
+    contact_name TEXT NOT NULL DEFAULT '',
+    contact_email TEXT NOT NULL,
+    official_email TEXT NOT NULL DEFAULT '',
+    website TEXT NOT NULL DEFAULT '',
+    memo TEXT NOT NULL DEFAULT '',
+    importance INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending',
+    outbound_id INTEGER,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_prospects_user ON prospects(user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_prospects_email ON prospects(contact_email)`,
   `CREATE INDEX IF NOT EXISTS idx_outbounds_account ON outbounds(account_id)`,
   `CREATE INDEX IF NOT EXISTS idx_outbounds_email ON outbounds(contact_email)`,
   `CREATE INDEX IF NOT EXISTS idx_messages_outbound ON messages(outbound_id)`,
