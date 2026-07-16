@@ -23,17 +23,17 @@
 
 ## 기술 스택
 
-Next.js (App Router) · Drizzle ORM + libSQL(Turso) · imapflow(IMAP 수신) · nodemailer(SMTP 발송) · iron-session(로그인) · Tailwind CSS
+Next.js (App Router) · Drizzle ORM + Supabase(PostgreSQL) · imapflow(IMAP 수신) · nodemailer(SMTP 발송) · iron-session(로그인) · Tailwind CSS
 
-## 배포 방법 (Vercel)
+## 배포 방법 (Vercel + Supabase)
 
-1. **DB 만들기** — [Turso](https://turso.tech) 무료 가입 → DB 생성 → URL과 토큰 복사
+1. **DB 연결 문자열 복사** — Supabase 대시보드 → 프로젝트 → 상단 **Connect** 버튼 → **Transaction pooler** 주소 복사 (포트 6543, `[YOUR-PASSWORD]` 부분을 DB 비밀번호로 교체)
 2. **Vercel에 이 저장소 연결** 후 환경변수 등록 (`.env.example` 참고):
    - `APP_SECRET` — 32자 이상 아무 랜덤 문자열 (세션·비밀번호 암호화 키)
-   - `DATABASE_URL` — `libsql://...` (Turso URL)
-   - `DATABASE_AUTH_TOKEN` — Turso 토큰
+   - `DATABASE_URL` — 위에서 복사한 Supabase 연결 문자열
    - `TEAM_INVITE_CODE` — (선택) 설정하면 이 코드를 아는 사람만 가입 가능
    - `CRON_SECRET` — (선택) 크론 엔드포인트 보호
+   - 테이블은 첫 실행 시 자동으로 생성됩니다 (별도 마이그레이션 불필요)
 3. 배포하면 `vercel.json`의 크론이 **매시간 자동으로 전 팀원 메일을 동기화**합니다.
 
 ## 처음 사용하는 순서
@@ -48,8 +48,9 @@ Next.js (App Router) · Drizzle ORM + libSQL(Turso) · imapflow(IMAP 수신) · 
 
 ```bash
 npm install
-APP_SECRET=dev-secret-32chars-xxxxxxxxxxxxxx npm run dev
-# DATABASE_URL 없이 실행하면 로컬 파일 DB(data/outbound.db) 사용
+APP_SECRET=dev-secret-32chars-xxxxxxxxxxxxxx \
+DATABASE_URL="postgres://..." \
+npm run dev
 ```
 
 ## 참고 사항
