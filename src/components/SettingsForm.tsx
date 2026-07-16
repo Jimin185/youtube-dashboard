@@ -10,11 +10,14 @@ interface AccountInfo {
   imapPort: number;
   smtpHost: string;
   smtpPort: number;
+  fromName: string;
+  fromEmail: string;
+  signature: string;
   lastSyncAt: string | null;
   lastSyncError: string | null;
 }
 
-export default function SettingsForm() {
+export default function SettingsForm({ loginEmail }: { loginEmail: string }) {
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [form, setForm] = useState({
     email: "",
@@ -23,6 +26,9 @@ export default function SettingsForm() {
     imapPort: "993",
     smtpHost: "smtp.gmail.com",
     smtpPort: "465",
+    fromName: "",
+    fromEmail: "",
+    signature: "",
   });
   const [advanced, setAdvanced] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -42,6 +48,9 @@ export default function SettingsForm() {
             imapPort: String(a.imapPort),
             smtpHost: a.smtpHost,
             smtpPort: String(a.smtpPort),
+            fromName: a.fromName ?? "",
+            fromEmail: a.fromEmail ?? "",
+            signature: a.signature ?? "",
           }));
         }
       })
@@ -66,6 +75,9 @@ export default function SettingsForm() {
         imapPort: Number(form.imapPort),
         smtpHost: form.smtpHost,
         smtpPort: Number(form.smtpPort),
+        fromName: form.fromName,
+        fromEmail: form.fromEmail,
+        signature: form.signature,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -147,6 +159,73 @@ export default function SettingsForm() {
               ⚠️ Gmail 로그인 비밀번호가 아니라 위에서 만든 <b>앱 비밀번호</b>를 넣어주세요. 암호화되어
               저장되며 메일 읽기/발송에만 사용됩니다.
             </p>
+          </div>
+
+          <div className="border-t border-slate-100 pt-4 space-y-4">
+            <p className="text-sm font-semibold">✍️ 발신자 표시 · 서명 (선택)</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium mb-1">보내는 사람 이름</label>
+                <input
+                  value={form.fromName}
+                  onChange={(e) => set("fromName", e.target.value)}
+                  placeholder="예: 홍길동 | OO애드"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1">발신 주소 (받는 사람에게 보이는 주소)</label>
+                <div className="flex gap-1.5">
+                  <input
+                    value={form.fromEmail}
+                    onChange={(e) => set("fromEmail", e.target.value)}
+                    placeholder={`비우면 ${form.email || "연결한 Gmail"} 그대로`}
+                    className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm min-w-0"
+                  />
+                  {loginEmail && form.fromEmail !== loginEmail && (
+                    <button
+                      type="button"
+                      onClick={() => set("fromEmail", loginEmail)}
+                      className="shrink-0 rounded-lg border border-blue-300 text-blue-600 px-2 py-1 text-xs hover:bg-blue-50"
+                      title={loginEmail}
+                    >
+                      로그인 메일로
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+            {form.fromEmail && form.fromEmail.toLowerCase() !== form.email.toLowerCase() && (
+              <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-xs text-amber-800 space-y-1">
+                <p className="font-semibold">
+                  ⚠️ Gmail 계정과 다른 주소로 발신하려면 Gmail에 그 주소를 먼저 등록해야 해요
+                </p>
+                <p>
+                  Gmail →{" "}
+                  <a
+                    href="https://mail.google.com/mail/u/0/#settings/accounts"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline"
+                  >
+                    설정 → 계정 및 가져오기
+                  </a>{" "}
+                  → &quot;다른 주소에서 메일 보내기&quot;에 <b>{form.fromEmail}</b> 추가 (확인 메일 인증 필요).
+                  등록하지 않으면 Gmail이 발신 주소를 원래 계정으로 되돌려버립니다.
+                </p>
+                <p>💡 그 주소로 온 답장을 자동 감지하려면, 해당 메일함에서 Gmail로 자동 전달을 설정해 두세요.</p>
+              </div>
+            )}
+            <div>
+              <label className="block text-xs font-medium mb-1">서명 (모든 발신 메일 끝에 자동으로 붙어요)</label>
+              <textarea
+                value={form.signature}
+                onChange={(e) => set("signature", e.target.value)}
+                rows={4}
+                placeholder={"홍길동 드림\nOO애드 퍼포먼스마케팅팀\n010-0000-0000 | www.example.com"}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm resize-y"
+              />
+            </div>
           </div>
 
           <button

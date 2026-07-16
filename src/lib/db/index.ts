@@ -42,6 +42,9 @@ const DDL = [
     smtp_port INTEGER NOT NULL DEFAULT 465,
     username TEXT NOT NULL,
     password_enc TEXT NOT NULL,
+    from_name TEXT NOT NULL DEFAULT '',
+    from_email TEXT NOT NULL DEFAULT '',
+    signature TEXT NOT NULL DEFAULT '',
     last_sync_at TIMESTAMPTZ,
     sync_state TEXT NOT NULL DEFAULT '{}',
     last_sync_error TEXT,
@@ -107,6 +110,10 @@ const DDL = [
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL
   )`,
+  // 기존 배포 DB에 새 컬럼 추가 (idempotent 마이그레이션)
+  `ALTER TABLE mail_accounts ADD COLUMN IF NOT EXISTS from_name TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE mail_accounts ADD COLUMN IF NOT EXISTS from_email TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE mail_accounts ADD COLUMN IF NOT EXISTS signature TEXT NOT NULL DEFAULT ''`,
   `CREATE INDEX IF NOT EXISTS idx_templates_user ON templates(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_prospects_user ON prospects(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_prospects_email ON prospects(contact_email)`,

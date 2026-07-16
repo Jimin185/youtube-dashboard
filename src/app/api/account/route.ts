@@ -24,6 +24,9 @@ export async function GET() {
       smtpHost: a.smtpHost,
       smtpPort: a.smtpPort,
       username: a.username,
+      fromName: a.fromName,
+      fromEmail: a.fromEmail,
+      signature: a.signature,
       lastSyncAt: a.lastSyncAt,
       lastSyncError: a.lastSyncError,
     })),
@@ -37,6 +40,13 @@ const bodySchema = z.object({
   imapPort: z.coerce.number().default(993),
   smtpHost: z.string().min(1).default("smtp.gmail.com"),
   smtpPort: z.coerce.number().default(465),
+  fromName: z.string().max(100).default(""),
+  fromEmail: z
+    .string()
+    .email("발신 주소 형식이 올바르지 않습니다.")
+    .or(z.literal(""))
+    .default(""),
+  signature: z.string().max(2000).default(""),
 });
 
 /** 메일 계정 연결(생성/수정) + 연결 테스트 */
@@ -52,7 +62,8 @@ export async function POST(req: Request) {
       { status: 400 }
     );
   }
-  const { email, password, imapHost, imapPort, smtpHost, smtpPort } = parsed.data;
+  const { email, password, imapHost, imapPort, smtpHost, smtpPort, fromName, fromEmail, signature } =
+    parsed.data;
 
   const db = getDb();
   const now = new Date();
@@ -65,6 +76,9 @@ export async function POST(req: Request) {
     imapPort,
     smtpHost,
     smtpPort,
+    fromName: fromName.trim(),
+    fromEmail: fromEmail.trim().toLowerCase(),
+    signature,
   };
 
   const existing = await db.select().from(mailAccounts).where(eq(mailAccounts.userId, userId));

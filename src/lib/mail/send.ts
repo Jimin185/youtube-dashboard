@@ -93,6 +93,11 @@ export async function sendToOutbounds(
   }
 
   const domain = account.email.split("@")[1] ?? "mail";
+  // 발신자 표시: 설정한 발신 주소/이름이 있으면 사용 (Gmail '다른 주소에서 메일 보내기' 등록 필요)
+  const fromAddress = account.fromEmail || account.email;
+  const from = account.fromName
+    ? { name: account.fromName, address: fromAddress }
+    : fromAddress;
   const results: SendItemResult[] = [];
   const sentRaws: Buffer[] = [];
 
@@ -114,11 +119,13 @@ export async function sendToOutbounds(
             ? o.subject
             : `Re: ${o.subject}`
           : "(제목 없음)";
-      const body = renderTemplate(bodyTemplate, o);
+      // 본문 렌더링 후 서명 자동 첨부
+      const rendered = renderTemplate(bodyTemplate, o);
+      const body = account.signature ? `${rendered}\n\n${account.signature}` : rendered;
       const messageId = `<${crypto.randomUUID()}@${domain}>`;
 
       const mailOptions = {
-        from: account.email,
+        from,
         to: o.contactEmail,
         subject,
         text: body,
@@ -141,7 +148,7 @@ export async function sendToOutbounds(
         messageId,
         inReplyTo: lastMsg?.messageId ?? "",
         subject,
-        fromAddr: account.email.toLowerCase(),
+        fromAddr: fromAddress.toLowerCase(),
         toAddr: o.contactEmail,
         date: now,
         snippet: body.replace(/\s+/g, " ").slice(0, 200),

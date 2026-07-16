@@ -22,6 +22,11 @@ export const mailAccounts = pgTable("mail_accounts", {
   smtpPort: integer("smtp_port").notNull().default(465),
   username: text("username").notNull(),
   passwordEnc: text("password_enc").notNull(),
+  // 받는 사람에게 보이는 발신자 (비우면 계정 주소 그대로)
+  fromName: text("from_name").notNull().default(""),
+  fromEmail: text("from_email").notNull().default(""),
+  // 모든 발신 메일 끝에 자동으로 붙는 서명
+  signature: text("signature").notNull().default(""),
   lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
   syncState: text("sync_state").notNull().default("{}"),
   lastSyncError: text("last_sync_error"),
