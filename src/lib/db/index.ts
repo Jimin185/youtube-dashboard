@@ -124,7 +124,11 @@ export async function ensureSchema(): Promise<void> {
       for (const stmt of DDL) {
         await client.unsafe(stmt);
       }
-    })();
+    })().catch((err) => {
+      // 일시적 DB 장애가 영구 실패로 캐시되지 않도록 초기화
+      globalForDb.__dbReady = undefined;
+      throw err;
+    });
   }
   return globalForDb.__dbReady;
 }

@@ -147,5 +147,9 @@ export async function POST(req: Request) {
 
   const sent = results.filter((r) => r.ok).length;
   const failed = results.filter((r) => !r.ok);
+  console.log(
+    `[send] user=${userId} sent=${sent} failed=${failed.length}` +
+      (failed.length > 0 ? ` errors=${failed.slice(0, 3).map((f) => f.error).join(" | ")}` : "")
+  );
   return NextResponse.json({ sent, failed, movedProspects });
 }

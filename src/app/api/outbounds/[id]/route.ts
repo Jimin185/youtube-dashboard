@@ -31,6 +31,7 @@ export async function GET(_req: Request, { params }: Params) {
 const patchSchema = z.object({
   clientName: z.string().optional(),
   contactName: z.string().optional(),
+  stage: z.number().int().min(1).max(3).optional(),
   importance: z.number().int().min(0).max(3).optional(),
   officialEmail: z.string().optional(),
   website: z.string().optional(),

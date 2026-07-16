@@ -305,10 +305,15 @@ export default function ComposeModal({ targets, mode, onClose, onSent }: Props) 
             </>
           ) : (
             <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2">
-              <p className="font-semibold text-emerald-600">
-                ✓ {result.sent}건 발송 완료
-                {mode === "prospect" && result.sent > 0 && " — 보낸 목록으로 이동했습니다"}
-              </p>
+              {result.sent > 0 ? (
+                <p className="font-semibold text-emerald-600">
+                  ✓ {result.sent}건 발송 완료
+                  {mode === "prospect" && " — 보낸 목록으로 이동했습니다"}
+                  {mode === "outbound" && " — 차수가 올라갔습니다 (답변수신/완료 건은 차수 유지)"}
+                </p>
+              ) : (
+                <p className="font-semibold text-red-600">✗ 발송에 실패했습니다. 아래 원인을 확인해 주세요.</p>
+              )}
               {failedNames.length > 0 && (
                 <div className="text-sm text-red-600">
                   <p className="font-medium">{failedNames.length}건 실패:</p>

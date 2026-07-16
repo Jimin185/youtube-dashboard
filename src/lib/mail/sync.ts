@@ -102,6 +102,21 @@ async function fetchNewMails(
   }
 }
 
+/** In-Reply-To/References 값 목록 추출 */
+function refIdsOf(parsed: ParsedMail): string[] {
+  return [
+    ...(parsed.inReplyTo ? [parsed.inReplyTo] : []),
+    ...(Array.isArray(parsed.references)
+      ? parsed.references
+      : parsed.references
+        ? [parsed.references]
+        : []),
+  ].filter(Boolean);
+}
+
+// 대시보드에서 보낸 직후 Gmail 보낸편지함에 생기는 사본을 같은 발송으로 간주하는 시간 창
+const DUP_SEND_WINDOW_MS = 10 * 60 * 1000;
+
 /** 보낸 메일 1건을 아웃바운드 목록에 반영 */
 async function ingestSentMail(account: MailAccount, parsed: ParsedMail): Promise<void> {
   const db = getDb();
@@ -126,28 +141,53 @@ async function ingestSentMail(account: MailAccount, parsed: ParsedMail): Promise
     if (dup.length > 0) return;
   }
 
+  // 스레드 헤더로 기존 아웃바운드 찾기 (Gmail이 Message-ID를 바꿔치기해도
+  // In-Reply-To/References 는 우리가 저장한 이전 메일 ID를 가리킨다)
+  const refIds = refIdsOf(parsed);
+  let refOutboundId: number | null = null;
+  if (refIds.length > 0) {
+    const hit = await db
+      .select({ outboundId: messages.outboundId })
+      .from(messages)
+      .where(inArray(messages.messageId, refIds))
+      .limit(1);
+    if (hit.length > 0) refOutboundId = hit[0].outboundId;
+  }
+
   const bodyText = parsed.text ?? "";
   const bodyHtml = typeof parsed.html === "string" ? parsed.html : "";
   const snippet = snippetOf(parsed);
 
   for (const rcpt of recipients) {
-    // 같은 계정 + 같은 수신자 + 같은(정규화된) 제목이면 같은 아웃바운드 스레드로 취급
-    const existing = await db
-      .select()
-      .from(outbounds)
-      .where(
-        and(
-          eq(outbounds.accountId, account.id),
-          eq(outbounds.contactEmail, rcpt.address),
-          eq(outbounds.normalizedSubject, normSubject)
+    // 1순위: 스레드 헤더 매칭, 2순위: 같은 수신자 + 같은(정규화된) 제목
+    let existing =
+      refOutboundId !== null
+        ? await db.select().from(outbounds).where(eq(outbounds.id, refOutboundId)).limit(1)
+        : [];
+    if (existing.length === 0) {
+      existing = await db
+        .select()
+        .from(outbounds)
+        .where(
+          and(
+            eq(outbounds.accountId, account.id),
+            eq(outbounds.contactEmail, rcpt.address),
+            eq(outbounds.normalizedSubject, normSubject)
+          )
         )
-      )
-      .limit(1);
+        .limit(1);
+    }
 
     let outboundId: number;
     if (existing.length > 0) {
       const o = existing[0];
       outboundId = o.id;
+
+      // 대시보드에서 방금 발송한 메일의 Gmail 사본이면 통째로 스킵 (중복/차수 이중 반영 방지)
+      const isDashboardCopy =
+        Math.abs(date.getTime() - new Date(o.lastSentAt).getTime()) < DUP_SEND_WINDOW_MS;
+      if (isDashboardCopy) continue;
+
       const updates: Partial<typeof outbounds.$inferInsert> = { updatedAt: now };
       if (date > new Date(o.lastSentAt)) {
         updates.lastSentAt = date;
@@ -217,14 +257,7 @@ async function ingestReceivedMail(account: MailAccount, parsed: ParsedMail): Pro
   }
 
   // 1순위: In-Reply-To / References 로 우리가 보낸 메일과 매칭
-  const refIds = [
-    ...(parsed.inReplyTo ? [parsed.inReplyTo] : []),
-    ...(Array.isArray(parsed.references)
-      ? parsed.references
-      : parsed.references
-        ? [parsed.references]
-        : []),
-  ].filter(Boolean);
+  const refIds = refIdsOf(parsed);
 
   let outboundId: number | null = null;
   if (refIds.length > 0) {
@@ -324,6 +357,7 @@ export async function syncAccount(account: MailAccount): Promise<SyncResult> {
       .where(eq(mailAccounts.id, account.id));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[sync] account=${account.email} error=${msg}`);
     result.error = msg;
     await db
       .update(mailAccounts)
