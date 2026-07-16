@@ -151,7 +151,7 @@ async function ingestSentMail(account: MailAccount, parsed: ParsedMail): Promise
       const updates: Partial<typeof outbounds.$inferInsert> = { updatedAt: now };
       if (date > new Date(o.lastSentAt)) {
         updates.lastSentAt = date;
-        // 대시보드 밖(하이웍스 웹메일)에서 직접 리마인드를 보낸 경우도 차수 반영
+        // 대시보드 밖(웹메일)에서 직접 리마인드를 보낸 경우도 차수 반영
         if (o.status === "active" && o.stage < 3) updates.stage = o.stage + 1;
       }
       if (date < new Date(o.firstSentAt)) updates.firstSentAt = date;

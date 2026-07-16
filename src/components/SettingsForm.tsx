@@ -19,9 +19,9 @@ export default function SettingsForm() {
   const [form, setForm] = useState({
     email: "",
     password: "",
-    imapHost: "imap.hiworks.com",
+    imapHost: "imap.gmail.com",
     imapPort: "993",
-    smtpHost: "smtp.hiworks.com",
+    smtpHost: "smtp.gmail.com",
     smtpPort: "465",
   });
   const [advanced, setAdvanced] = useState(false);
@@ -81,7 +81,7 @@ export default function SettingsForm() {
     <main className="flex-1 max-w-2xl w-full mx-auto px-6 py-8">
       <div className="flex items-center gap-3 mb-6">
         <Link href="/" className="text-slate-400 hover:text-slate-600">← 대시보드</Link>
-        <h1 className="text-xl font-bold">설정 · 하이웍스 메일 연결</h1>
+        <h1 className="text-xl font-bold">설정 · 메일 계정 연결</h1>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 p-6">
@@ -100,30 +100,52 @@ export default function SettingsForm() {
           </div>
         )}
 
+        <div className="mb-5 rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-xs text-blue-800 space-y-1.5">
+          <p className="font-semibold text-sm">📌 Gmail 연결 전 준비 — &quot;앱 비밀번호&quot; 만들기 (2분)</p>
+          <p>Gmail은 보안상 일반 비밀번호로 외부 연결이 안 되고, 전용 &quot;앱 비밀번호&quot;를 만들어야 해요.</p>
+          <ol className="list-decimal ml-4 space-y-1">
+            <li>
+              구글 계정에 <b>2단계 인증</b>이 켜져 있어야 합니다 (
+              <a href="https://myaccount.google.com/signinoptions/two-step-verification" target="_blank" rel="noreferrer" className="underline">
+                여기서 확인
+              </a>
+              )
+            </li>
+            <li>
+              <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" className="underline font-medium">
+                구글 앱 비밀번호 페이지
+              </a>
+              에서 이름(예: 대시보드)을 입력하고 만들기
+            </li>
+            <li>화면에 뜨는 <b>16자리 코드</b>를 복사해서 아래 &quot;앱 비밀번호&quot; 칸에 붙여넣기 (띄어쓰기는 있어도 무방)</li>
+          </ol>
+        </div>
+
         <form onSubmit={save} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">하이웍스 메일 주소</label>
+            <label className="block text-sm font-medium mb-1">Gmail 주소</label>
             <input
               type="email"
               required
               value={form.email}
               onChange={(e) => set("email", e.target.value)}
-              placeholder="name@company.com"
+              placeholder="name@gmail.com"
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">메일 비밀번호</label>
+            <label className="block text-sm font-medium mb-1">앱 비밀번호 (16자리)</label>
             <input
               type="password"
               required
               value={form.password}
               onChange={(e) => set("password", e.target.value)}
-              placeholder={account ? "변경하려면 다시 입력" : "하이웍스 로그인 비밀번호"}
+              placeholder={account ? "변경하려면 다시 입력" : "예: abcd efgh ijkl mnop"}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <p className="text-xs text-slate-400 mt-1">
-              비밀번호는 암호화되어 저장되며 메일 읽기/발송에만 사용됩니다.
+              ⚠️ Gmail 로그인 비밀번호가 아니라 위에서 만든 <b>앱 비밀번호</b>를 넣어주세요. 암호화되어
+              저장되며 메일 읽기/발송에만 사용됩니다.
             </p>
           </div>
 
@@ -132,7 +154,7 @@ export default function SettingsForm() {
             onClick={() => setAdvanced(!advanced)}
             className="text-xs text-slate-500 underline"
           >
-            {advanced ? "고급 설정 접기" : "고급 설정 (서버 주소 변경)"}
+            {advanced ? "고급 설정 접기" : "고급 설정 (Gmail이 아닌 다른 메일 사용 시)"}
           </button>
           {advanced && (
             <div className="grid grid-cols-2 gap-3">
@@ -185,12 +207,6 @@ export default function SettingsForm() {
             {saving ? "연결 테스트 중..." : "저장하고 연결 테스트"}
           </button>
         </form>
-
-        <div className="mt-6 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-xs text-amber-800 space-y-1">
-          <p className="font-semibold">⚠️ 하이웍스에서 IMAP을 먼저 켜주세요</p>
-          <p>하이웍스 웹메일 → 환경설정 → POP3/IMAP 설정 → IMAP 사용 체크</p>
-          <p>연결이 안 되면 회사 관리자에게 IMAP/SMTP 사용 가능 여부를 확인해 주세요.</p>
-        </div>
       </div>
     </main>
   );

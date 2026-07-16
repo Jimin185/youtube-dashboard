@@ -33,9 +33,11 @@ function buildRaw(options: ConstructorParameters<typeof MailComposer>[0]): Promi
   });
 }
 
-/** 발송한 메일을 하이웍스 보낸편지함에도 저장 (실패해도 발송 자체는 성공 처리) */
+/** 발송한 메일을 메일함의 보낸편지함에도 저장 (실패해도 발송 자체는 성공 처리) */
 async function appendToSentFolder(account: MailAccount, raws: Buffer[]): Promise<void> {
   if (raws.length === 0) return;
+  // Gmail은 SMTP로 보낸 메일을 자동으로 보낸편지함에 저장하므로 중복 저장하지 않음
+  if (account.smtpHost.toLowerCase().includes("gmail")) return;
   const client = new ImapFlow({
     host: account.imapHost,
     port: account.imapPort,

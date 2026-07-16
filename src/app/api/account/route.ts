@@ -32,14 +32,14 @@ export async function GET() {
 
 const bodySchema = z.object({
   email: z.string().email("메일 주소 형식이 올바르지 않습니다."),
-  password: z.string().min(1, "메일 비밀번호를 입력하세요."),
-  imapHost: z.string().min(1).default("imap.hiworks.com"),
+  password: z.string().min(1, "앱 비밀번호를 입력하세요."),
+  imapHost: z.string().min(1).default("imap.gmail.com"),
   imapPort: z.coerce.number().default(993),
-  smtpHost: z.string().min(1).default("smtp.hiworks.com"),
+  smtpHost: z.string().min(1).default("smtp.gmail.com"),
   smtpPort: z.coerce.number().default(465),
 });
 
-/** 하이웍스 계정 연결(생성/수정) + 연결 테스트 */
+/** 메일 계정 연결(생성/수정) + 연결 테스트 */
 export async function POST(req: Request) {
   await ensureSchema();
   const userId = await getUserId();
@@ -59,8 +59,8 @@ export async function POST(req: Request) {
   const values = {
     userId,
     email: email.toLowerCase(),
-    username: email.toLowerCase(), // 하이웍스는 메일 전체 주소가 아이디
-    passwordEnc: encrypt(password),
+    username: email.toLowerCase(), // Gmail/하이웍스 모두 메일 전체 주소가 아이디
+    passwordEnc: encrypt(password.replace(/\s/g, "")), // 앱 비밀번호는 공백 제거
     imapHost,
     imapPort,
     smtpHost,
@@ -93,7 +93,7 @@ export async function POST(req: Request) {
       {
         ok: false,
         saved: true,
-        error: `저장은 되었지만 메일 서버 접속에 실패했습니다: ${msg}. 하이웍스에서 IMAP 사용 설정을 확인해 주세요.`,
+        error: `저장은 되었지만 메일 서버 접속에 실패했습니다: ${msg}. Gmail이라면 '앱 비밀번호'를 사용했는지 확인해 주세요 (일반 로그인 비밀번호는 안 됩니다).`,
       },
       { status: 200 }
     );

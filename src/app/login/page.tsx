@@ -34,7 +34,7 @@ export default function LoginPage() {
     <main className="flex-1 flex items-center justify-center p-6">
       <div className="w-full max-w-sm">
         <h1 className="text-2xl font-bold text-center mb-1">아웃바운드 대시보드</h1>
-        <p className="text-sm text-slate-500 text-center mb-8">하이웍스 메일 연동 영업 관리</p>
+        <p className="text-sm text-slate-500 text-center mb-8">메일 연동 아웃바운드 영업 관리</p>
         <form onSubmit={submit} className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1">이메일</label>

@@ -110,6 +110,15 @@ export default function Dashboard({ userName }: { userName: string }) {
 
   useEffect(() => {
     load();
+    // 대시보드를 열면 30분 이상 지난 경우 자동으로 메일 동기화
+    fetch("/api/sync?auto=1", { method: "POST" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && !data.skipped && Array.isArray(data.results) && data.results.length > 0) {
+          load();
+        }
+      })
+      .catch(() => {});
   }, [load]);
 
   async function syncNow() {
@@ -332,7 +341,7 @@ export default function Dashboard({ userName }: { userName: string }) {
                         <p>아직 수집된 아웃바운드 메일이 없습니다.</p>
                         <p className="text-xs">
                           <Link href="/settings" className="text-blue-600 underline">설정</Link>
-                          에서 하이웍스 계정을 연결한 뒤 상단의 &quot;메일 동기화&quot;를 눌러주세요.
+                          에서 메일 계정을 연결한 뒤 상단의 &quot;메일 동기화&quot;를 눌러주세요.
                         </p>
                       </div>
                     ) : (
@@ -441,7 +450,8 @@ export default function Dashboard({ userName }: { userName: string }) {
         </div>
         <p className="text-xs text-slate-400 mt-3">
           💡 셀을 클릭하면 바로 수정됩니다 · 제목을 클릭하면 메일 원문과 주고받은 기록을 볼 수 있어요 · 2차
-          리마인드는 1차 발송 15일 후, 3차는 한달 후 자동으로 목록에 나타납니다.
+          리마인드는 1차 발송 15일 후, 3차는 한달 후 자동으로 목록에 나타납니다 · 메일은 대시보드를 열 때마다
+          자동 동기화됩니다 (매일 오전 9시에도 자동 실행).
         </p>
       </main>
 

@@ -1,6 +1,6 @@
 import crypto from "crypto";
 
-// 하이웍스 메일 비밀번호를 DB에 저장할 때 AES-256-GCM으로 암호화한다.
+// 메일 비밀번호(앱 비밀번호)를 DB에 저장할 때 AES-256-GCM으로 암호화한다.
 // APP_SECRET 환경변수가 키 역할을 한다.
 
 function getKey(): Buffer {

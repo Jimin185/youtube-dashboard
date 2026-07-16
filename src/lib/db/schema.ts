@@ -9,16 +9,16 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
 });
 
-// 각 팀원이 연결한 하이웍스 메일 계정
+// 각 팀원이 연결한 메일 계정 (기본: Gmail, 다른 IMAP 메일도 가능)
 export const mailAccounts = pgTable("mail_accounts", {
   id: serial("id").primaryKey(),
   userId: integer("user_id")
     .notNull()
     .references(() => users.id),
   email: text("email").notNull(),
-  imapHost: text("imap_host").notNull().default("imap.hiworks.com"),
+  imapHost: text("imap_host").notNull().default("imap.gmail.com"),
   imapPort: integer("imap_port").notNull().default(993),
-  smtpHost: text("smtp_host").notNull().default("smtp.hiworks.com"),
+  smtpHost: text("smtp_host").notNull().default("smtp.gmail.com"),
   smtpPort: integer("smtp_port").notNull().default(465),
   username: text("username").notNull(),
   passwordEnc: text("password_enc").notNull(),

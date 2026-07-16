@@ -37,7 +37,7 @@ export async function POST(req: Request) {
     .where(eq(mailAccounts.userId, userId));
   if (myAccounts.length === 0) {
     return NextResponse.json(
-      { error: "먼저 설정에서 하이웍스 메일 계정을 연결해 주세요." },
+      { error: "먼저 설정에서 메일 계정을 연결해 주세요." },
       { status: 400 }
     );
   }

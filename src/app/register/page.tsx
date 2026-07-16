@@ -37,7 +37,7 @@ export default function RegisterPage() {
     <main className="flex-1 flex items-center justify-center p-6">
       <div className="w-full max-w-sm">
         <h1 className="text-2xl font-bold text-center mb-1">팀원 가입</h1>
-        <p className="text-sm text-slate-500 text-center mb-8">가입 후 하이웍스 메일을 연결하세요</p>
+        <p className="text-sm text-slate-500 text-center mb-8">가입 후 Gmail 계정을 연결하세요</p>
         <form onSubmit={submit} className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1">이름</label>
