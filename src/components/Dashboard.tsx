@@ -474,19 +474,32 @@ export default function Dashboard({ userName }: { userName: string }) {
                           </button>
                         </td>
                         <td className="px-2 py-2">
-                          {i.status === "replied" ? (
-                            <span className="rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-xs font-medium">
-                              답변수신
-                            </span>
-                          ) : i.status === "closed" ? (
-                            <span className="rounded-full bg-slate-200 text-slate-600 px-2 py-0.5 text-xs">완료</span>
-                          ) : i.reminderBucket ? (
-                            <span className="rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-xs font-medium">
-                              {i.reminderBucket === "second" ? "2차 필요" : "3차 필요"}
-                            </span>
-                          ) : (
-                            <span className="rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-xs">대기중</span>
-                          )}
+                          {/* 상태를 표에서 바로 변경 */}
+                          <select
+                            value={i.status}
+                            onChange={(e) => patch(i.id, { status: e.target.value })}
+                            title="클릭해서 상태 변경"
+                            className={
+                              "rounded-full px-2 py-0.5 text-xs font-medium cursor-pointer border-0 focus:outline-none focus:ring-2 focus:ring-blue-300 " +
+                              (i.status === "replied"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : i.status === "closed"
+                                  ? "bg-slate-200 text-slate-600"
+                                  : i.reminderBucket
+                                    ? "bg-red-100 text-red-700"
+                                    : "bg-amber-100 text-amber-700")
+                            }
+                          >
+                            <option value="active">
+                              {i.status === "active" && i.reminderBucket
+                                ? i.reminderBucket === "second"
+                                  ? "2차 필요"
+                                  : "3차 필요"
+                                : "대기중"}
+                            </option>
+                            <option value="replied">답변수신</option>
+                            <option value="closed">완료</option>
+                          </select>
                         </td>
                         <td className="px-2 py-2 text-xs text-slate-500">{formatDate(i.firstSentAt)}</td>
                         <td className="px-2 py-2 text-xs text-slate-500">
