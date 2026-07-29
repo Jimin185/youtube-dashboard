@@ -345,6 +345,7 @@ export default function Dashboard({ userName }: { userName: string }) {
             refreshKey={prospectRefresh}
             onCountChange={setProspectCount}
             onCompose={(targets) => setCompose({ targets, mode: "prospect" })}
+            onImported={load}
           />
         )}
 

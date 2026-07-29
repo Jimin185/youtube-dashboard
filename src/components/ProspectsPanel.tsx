@@ -17,7 +17,41 @@ export interface ProspectItem {
 }
 
 // 엑셀 템플릿 헤더 (업로드 시에도 같은 이름으로 인식)
-const HEADERS = ["클라이언트", "담당자", "이메일", "공식이메일", "공식사이트", "메모", "중요도(0-3)"];
+// 상태를 비우면 '보낼 목록'으로, '보냄/답변수신/완료'를 적으면 '보낸 목록'으로 바로 들어간다
+const HEADERS = [
+  "클라이언트",
+  "담당자",
+  "이메일",
+  "공식이메일",
+  "공식사이트",
+  "메모",
+  "중요도(0-3)",
+  "상태(비우면 보낼예정)",
+  "차수(1-3)",
+  "발송일",
+  "제목(보낸 메일)",
+];
+
+/** 엑셀 셀 값을 ISO 날짜 문자열로 (엑셀 날짜 일련번호/Date/문자열 모두 지원) */
+function toIsoDate(v: unknown): string {
+  if (v instanceof Date && !isNaN(v.getTime())) return v.toISOString();
+  if (typeof v === "number" && v > 20000 && v < 60000) {
+    return new Date(Math.round((v - 25569) * 86400 * 1000)).toISOString();
+  }
+  const s = String(v ?? "").trim();
+  if (!s) return "";
+  const d = new Date(s.replace(/\./g, "-").replace(/-+$/, ""));
+  return isNaN(d.getTime()) ? "" : d.toISOString();
+}
+
+/** 상태 셀 텍스트 → 내부 상태값 */
+function parseStatus(s: string): "pending" | "active" | "replied" | "closed" {
+  const t = s.replace(/\s/g, "");
+  if (/답변|회신|응답/.test(t)) return "replied";
+  if (/완료|제외|종료|중단/.test(t)) return "closed";
+  if (/보냄|발송|진행|대기중|[123]차/.test(t)) return "active";
+  return "pending"; // 비어있거나 '보낼예정' 등 → 보낼 목록
+}
 
 function EditableCell({
   value,
@@ -86,10 +120,11 @@ interface Props {
   onCompose: (targets: ComposeTarget[]) => void;
   refreshKey: number; // 발송 후 목록 갱신 트리거
   onCountChange: (n: number) => void;
+  onImported: () => void; // 기존 발송분이 보낸 목록에 추가됐을 때 (아웃바운드 새로고침)
 }
 
 /** 📤 보낼 목록: 수기 입력 + 엑셀 업로드, 선택 발송 */
-export default function ProspectsPanel({ onCompose, refreshKey, onCountChange }: Props) {
+export default function ProspectsPanel({ onCompose, refreshKey, onCountChange, onImported }: Props) {
   const [items, setItems] = useState<ProspectItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -149,12 +184,20 @@ export default function ProspectsPanel({ onCompose, refreshKey, onCountChange }:
   function downloadTemplate() {
     const ws = XLSX.utils.aoa_to_sheet([
       HEADERS,
-      ["(예시) 무신사", "김철수", "cskim@example.com", "contact@example.com", "example.com", "패션 버티컬", 2],
+      // 예시 1: 아직 안 보낸 곳 → 상태 비움 → 보낼 목록으로
+      ["(예시) 무신사", "김철수", "cskim@example.com", "contact@example.com", "example.com", "패션 버티컬", 2, "", "", "", ""],
+      // 예시 2: 대시보드 쓰기 전에 이미 보낸 곳 → 보낸 목록으로 (차수/발송일/제목까지 기록)
+      ["(예시) 쿠팡", "박영희", "yh@example.com", "", "", "기존 발송분", 1, "보냄", 2, "2026-06-20", "유튜브 광고 제안드립니다"],
+      // 예시 3: 답장까지 받은 곳
+      ["(예시) 토스", "정수진", "sj@example.com", "", "", "", 3, "답변수신", 1, "2026-07-01", "브랜디드 콘텐츠 제안"],
     ]);
-    ws["!cols"] = [{ wch: 16 }, { wch: 12 }, { wch: 26 }, { wch: 24 }, { wch: 20 }, { wch: 24 }, { wch: 10 }];
+    ws["!cols"] = [
+      { wch: 16 }, { wch: 12 }, { wch: 26 }, { wch: 24 }, { wch: 20 }, { wch: 24 },
+      { wch: 10 }, { wch: 18 }, { wch: 9 }, { wch: 12 }, { wch: 26 },
+    ];
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "보낼목록");
-    XLSX.writeFile(wb, "보낼목록_템플릿.xlsx");
+    XLSX.utils.book_append_sheet(wb, ws, "아웃바운드");
+    XLSX.writeFile(wb, "아웃바운드_업로드_템플릿.xlsx");
   }
 
   async function handleFile(file: File) {
@@ -176,17 +219,38 @@ export default function ProspectsPanel({ onCompose, refreshKey, onCountChange }:
         return "";
       };
       const isEmail = (s: string) => /^\S+@\S+\.\S+$/.test(s);
+      const pickRaw = (r: Record<string, unknown>, keys: string[]) => {
+        for (const k of keys) {
+          const hit = Object.keys(r).find((h) =>
+            h.replace(/\s/g, "").toLowerCase().startsWith(k.toLowerCase())
+          );
+          if (hit && String(r[hit] ?? "").trim() !== "") return r[hit];
+        }
+        return "";
+      };
       const parsed = rows
-        .map((r) => ({
-          clientName: pick(r, ["클라이언트", "회사", "client", "company"], ["메일", "email", "사이트", "url"]),
-          contactName: pick(r, ["담당자", "이름", "contact", "name"], ["메일", "email"]),
-          // 공식이메일 열을 먼저 찾은 뒤 (이메일 열과 접두어가 겹치므로) 남는 이메일 열을 담당자 이메일로
-          officialEmail: pick(r, ["공식이메일", "공식메일"]),
-          contactEmail: pick(r, ["담당자이메일", "이메일", "메일", "email"]),
-          website: pick(r, ["공식사이트", "사이트", "website", "url"]),
-          memo: pick(r, ["메모", "비고", "memo", "note"]),
-          importance: Number(pick(r, ["중요도", "importance"])) || 0,
-        }))
+        .map((r) => {
+          const statusText = pick(r, ["상태", "status"]);
+          const stageText = pick(r, ["차수", "stage"]);
+          const status = parseStatus(statusText);
+          const sentAt = toIsoDate(pickRaw(r, ["발송일", "1차발송", "보낸날"]));
+          const stage = Math.min(3, Math.max(1, parseInt(stageText.replace(/[^0-9]/g, ""), 10) || 1));
+          return {
+            clientName: pick(r, ["클라이언트", "회사", "client", "company"], ["메일", "email", "사이트", "url"]),
+            contactName: pick(r, ["담당자", "이름", "contact", "name"], ["메일", "email"]),
+            // 공식이메일 열을 먼저 찾은 뒤 (이메일 열과 접두어가 겹치므로) 남는 이메일 열을 담당자 이메일로
+            officialEmail: pick(r, ["공식이메일", "공식메일"]),
+            contactEmail: pick(r, ["담당자이메일", "이메일", "메일", "email"], ["공식"]),
+            website: pick(r, ["공식사이트", "사이트", "website", "url"]),
+            memo: pick(r, ["메모", "비고", "memo", "note"]),
+            importance: Number(pick(r, ["중요도", "importance"])) || 0,
+            subject: pick(r, ["제목", "subject"]),
+            // 상태는 비웠지만 차수/발송일이 적혀 있으면 '이미 보낸 것'으로 간주
+            status: status === "pending" && (stageText.trim() || sentAt) ? "active" : status,
+            stage,
+            sentAt,
+          };
+        })
         // 담당자 이메일 또는 공식이메일 중 하나만 있으면 등록 가능
         .filter(
           (r) =>
@@ -199,20 +263,47 @@ export default function ProspectsPanel({ onCompose, refreshKey, onCountChange }:
         );
         return;
       }
-      const res = await fetch("/api/prospects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows: parsed }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setNotice(data.error ?? "업로드에 실패했습니다.");
-        return;
+
+      // 상태 없는 행 → 보낼 목록, 보냄/답변수신/완료 행 → 보낸 목록(기존 발송분)
+      const prospectRows = parsed.filter((r) => r.status === "pending");
+      const sentRows = parsed.filter((r) => r.status !== "pending");
+      const parts: string[] = [];
+
+      if (prospectRows.length > 0) {
+        const res = await fetch("/api/prospects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rows: prospectRows }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setNotice(data.error ?? "업로드에 실패했습니다.");
+          return;
+        }
+        parts.push(
+          `📤 보낼 목록 ${data.inserted}건` + (data.skipped > 0 ? ` (중복 ${data.skipped} 제외)` : "")
+        );
       }
-      const parts = [`✓ ${data.inserted}건 추가 완료`];
-      if (data.skipped > 0) parts.push(`중복 ${data.skipped}건 건너뜀`);
-      if (data.invalid > 0) parts.push(`이메일 없는 ${data.invalid}건 제외`);
-      setNotice(parts.join(" · "));
+
+      if (sentRows.length > 0) {
+        const res = await fetch("/api/outbounds/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rows: sentRows }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setNotice((parts.length ? parts.join(" · ") + " / " : "") + (data.error ?? "기존 발송분 등록 실패"));
+          return;
+        }
+        parts.push(
+          `📬 보낸 목록(기존 발송분) ${data.inserted}건` +
+            (data.skipped > 0 ? ` (중복 ${data.skipped} 제외)` : "")
+        );
+        onImported();
+      }
+
+      setNotice(`✓ 추가 완료 — ${parts.join(" · ")}`);
       load();
     } catch {
       setNotice("파일을 읽지 못했습니다. .xlsx 또는 .csv 파일인지 확인해 주세요.");
