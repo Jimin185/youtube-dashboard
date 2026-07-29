@@ -58,23 +58,36 @@ async function findSentMailboxPath(client: ImapFlow): Promise<string | null> {
   return null;
 }
 
-interface FetchedMail {
-  uid: number;
-  parsed: ParsedMail;
+// 서버 실행 제한(300초) 안에서 안전하게 끝내기 위한 시간 예산.
+// 넘으면 진행 상황을 저장하고 중단 → 다음 동기화가 이어서 처리한다.
+const SYNC_TIME_BUDGET_MS = 230_000;
+
+interface ProcessResult {
+  processed: number;
+  partial: boolean;
+  state: MailboxState;
 }
 
-/** 특정 메일함에서 lastUid 이후의 새 메일을 파싱해 가져온다 */
-async function fetchNewMails(
+/**
+ * 메일함을 UID 오름차순으로 순회하며 처리한다.
+ * - prefilter가 있으면 겉봉(envelope/헤더)만 먼저 확인해 관련 없는 메일은 본문을 받지 않고 건너뜀
+ * - 시간 예산을 넘으면 거기까지의 lastUid를 담아 partial=true로 반환 (다음 동기화가 이어서 처리)
+ */
+async function processMailbox(
   client: ImapFlow,
   path: string,
-  state: MailboxState
-): Promise<{ mails: FetchedMail[]; newState: MailboxState }> {
+  state: MailboxState,
+  deadline: number,
+  handler: (parsed: ParsedMail) => Promise<void>,
+  prefilter: ((uid: number) => Promise<boolean>) | null
+): Promise<ProcessResult> {
   const lock = await client.getMailboxLock(path);
   try {
     const mailbox = client.mailbox;
-    if (!mailbox || typeof mailbox === "boolean") return { mails: [], newState: state };
+    if (!mailbox || typeof mailbox === "boolean")
+      return { processed: 0, partial: false, state };
     const uidValidity = Number(mailbox.uidValidity ?? 0);
-    let sinceUid = state.uidValidity === uidValidity ? state.lastUid ?? 0 : 0;
+    const sinceUid = state.uidValidity === uidValidity ? (state.lastUid ?? 0) : 0;
 
     let searchUids: number[] = [];
     if (sinceUid === 0) {
@@ -86,20 +99,44 @@ async function fetchNewMails(
       const res = await client.search({ uid: `${sinceUid + 1}:*` }, { uid: true });
       searchUids = (Array.isArray(res) ? res : []).filter((u) => u > sinceUid);
     }
+    searchUids.sort((a, b) => a - b); // 이어하기가 가능하려면 반드시 오름차순
 
-    const mails: FetchedMail[] = [];
-    let maxUid = sinceUid;
+    let processed = 0;
+    let lastUid = sinceUid;
+    let partial = false;
     for (const uid of searchUids) {
-      const msg = await client.fetchOne(String(uid), { source: true }, { uid: true });
-      if (!msg || typeof msg === "boolean" || !msg.source) continue;
-      const parsed = await simpleParser(msg.source);
-      mails.push({ uid, parsed });
-      if (uid > maxUid) maxUid = uid;
+      if (Date.now() > deadline) {
+        partial = true;
+        break;
+      }
+      let include = true;
+      if (prefilter) include = await prefilter(uid);
+      if (include) {
+        const msg = await client.fetchOne(String(uid), { source: true }, { uid: true });
+        if (msg && typeof msg !== "boolean" && msg.source) {
+          const parsed = await simpleParser(msg.source);
+          await handler(parsed);
+          processed++;
+        }
+      }
+      lastUid = uid;
     }
-    return { mails, newState: { uidValidity, lastUid: maxUid } };
+    return { processed, partial, state: { uidValidity, lastUid } };
   } finally {
     lock.release();
   }
+}
+
+/** 메시지 ID가 이미 DB에 있는지 */
+async function isKnownMessageId(messageId: string | undefined | null): Promise<boolean> {
+  if (!messageId) return false;
+  const db = getDb();
+  const dup = await db
+    .select({ id: messages.id })
+    .from(messages)
+    .where(eq(messages.messageId, messageId))
+    .limit(1);
+  return dup.length > 0;
 }
 
 /** In-Reply-To/References 값 목록 추출 */
@@ -315,6 +352,7 @@ export interface SyncResult {
   accountId: number;
   sentFetched: number;
   receivedFetched: number;
+  partial?: boolean; // 시간 예산 초과로 중단됨 — 다시 동기화하면 이어서 처리
   error?: string;
 }
 
@@ -323,38 +361,84 @@ export async function syncAccount(account: MailAccount): Promise<SyncResult> {
   await ensureSchema();
   const db = getDb();
   const result: SyncResult = { accountId: account.id, sentFetched: 0, receivedFetched: 0 };
+  const deadline = Date.now() + SYNC_TIME_BUDGET_MS;
 
   let client: ImapFlow | null = null;
   try {
     client = await openImap(account);
+    const imap = client;
     const state: SyncState = JSON.parse(account.syncState || "{}");
+    const myDomain = account.email.split("@")[1]?.toLowerCase() ?? "";
 
-    const sentPath = await findSentMailboxPath(client);
+    // ── 보낸편지함: 이미 수집한 메일은 겉봉만 보고 건너뜀 ──
+    const sentPath = await findSentMailboxPath(imap);
     if (sentPath) {
-      const { mails, newState } = await fetchNewMails(client, sentPath, state.sent ?? {});
-      // 오래된 것부터 처리해야 차수 계산이 맞다
-      mails.sort((a, b) => (a.parsed.date?.getTime() ?? 0) - (b.parsed.date?.getTime() ?? 0));
-      for (const m of mails) {
-        await ingestSentMail(account, m.parsed);
-      }
-      result.sentFetched = mails.length;
-      state.sent = newState;
+      const r = await processMailbox(
+        imap,
+        sentPath,
+        state.sent ?? {},
+        deadline,
+        (parsed) => ingestSentMail(account, parsed),
+        async (uid) => {
+          const meta = await imap.fetchOne(String(uid), { envelope: true }, { uid: true });
+          if (!meta || typeof meta === "boolean") return false;
+          return !(await isKnownMessageId(meta.envelope?.messageId));
+        }
+      );
+      result.sentFetched = r.processed;
+      result.partial ||= r.partial;
+      state.sent = r.state;
     }
 
+    // ── 받은편지함: 겉봉만 보고 아웃바운드와 관련 있는 메일만 본문을 받는다 (대용량 메일함 대응) ──
     {
-      const { mails, newState } = await fetchNewMails(client, "INBOX", state.inbox ?? {});
-      mails.sort((a, b) => (a.parsed.date?.getTime() ?? 0) - (b.parsed.date?.getTime() ?? 0));
-      for (const m of mails) {
-        await ingestReceivedMail(account, m.parsed);
-      }
-      result.receivedFetched = mails.length;
-      state.inbox = newState;
+      const r = await processMailbox(
+        imap,
+        "INBOX",
+        state.inbox ?? {},
+        deadline,
+        (parsed) => ingestReceivedMail(account, parsed),
+        async (uid) => {
+          const meta = await imap.fetchOne(
+            String(uid),
+            { envelope: true, headers: ["in-reply-to", "references"] },
+            { uid: true }
+          );
+          if (!meta || typeof meta === "boolean") return false;
+          const from = meta.envelope?.from?.[0]?.address?.toLowerCase() ?? "";
+          if (!from || from === account.email.toLowerCase() || from.endsWith(`@${myDomain}`)) return false;
+          if (await isKnownMessageId(meta.envelope?.messageId)) return false;
+          // 우리가 보낸 메일에 대한 답장인지 (스레드 헤더)
+          const refIds = (meta.headers?.toString() ?? "").match(/<[^<>\s]+@[^<>\s]+>/g) ?? [];
+          if (refIds.length > 0) {
+            const hit = await db
+              .select({ id: messages.id })
+              .from(messages)
+              .where(inArray(messages.messageId, refIds))
+              .limit(1);
+            if (hit.length > 0) return true;
+          }
+          // 아웃바운드 상대에게서 온 메일인지
+          const o = await db
+            .select({ id: outbounds.id })
+            .from(outbounds)
+            .where(and(eq(outbounds.accountId, account.id), eq(outbounds.contactEmail, from)))
+            .limit(1);
+          return o.length > 0;
+        }
+      );
+      result.receivedFetched = r.processed;
+      result.partial ||= r.partial;
+      state.inbox = r.state;
     }
 
     await db
       .update(mailAccounts)
       .set({ syncState: JSON.stringify(state), lastSyncAt: new Date(), lastSyncError: null })
       .where(eq(mailAccounts.id, account.id));
+    if (result.partial) {
+      console.log(`[sync] account=${account.email} partial — 이어하기 필요 (sent=${result.sentFetched}, inbox=${result.receivedFetched})`);
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[sync] account=${account.email} error=${msg}`);

@@ -131,17 +131,37 @@ export default function Dashboard({ userName }: { userName: string }) {
   async function syncNow() {
     setSyncing(true);
     setNotice("");
-    const res = await fetch("/api/sync", { method: "POST" });
-    const data = await res.json().catch(() => ({}));
-    setSyncing(false);
-    if (!res.ok) {
-      setNotice(data.error ?? "동기화에 실패했습니다.");
-      return;
+    // 메일이 아주 많으면 서버가 시간 예산만큼 처리하고 partial로 반환 → 이어서 재요청 (최대 8회)
+    for (let round = 0; round < 8; round++) {
+      const res = await fetch("/api/sync", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSyncing(false);
+        setNotice(data.error ?? "동기화에 실패했습니다.");
+        return;
+      }
+      const results: { error?: string; partial?: boolean }[] = data.results ?? [];
+      const errs = results.filter((r) => r.error);
+      const hasPartial = results.some((r) => r.partial);
+      if (errs.length > 0) {
+        setSyncing(false);
+        setNotice(`동기화 오류: ${errs[0].error}`);
+        load();
+        return;
+      }
+      load();
+      if (!hasPartial) {
+        setSyncing(false);
+        const moved =
+          data.movedProspects > 0 ? ` 보낼 목록 ${data.movedProspects}건이 보낸 목록으로 이동했어요.` : "";
+        setNotice(`동기화 완료!${moved}`);
+        setProspectRefresh((n) => n + 1);
+        return;
+      }
+      setNotice(`메일이 많아 나눠서 동기화 중... (${round + 1}차 진행)`);
     }
-    const errs = (data.results ?? []).filter((r: { error?: string }) => r.error);
-    const moved = data.movedProspects > 0 ? ` 보낼 목록 ${data.movedProspects}건이 보낸 목록으로 이동했어요.` : "";
-    setNotice(errs.length > 0 ? `동기화 오류: ${errs[0].error}` : `동기화 완료!${moved}`);
-    load();
+    setSyncing(false);
+    setNotice("메일이 매우 많아 일부만 동기화됐어요. '메일 동기화'를 한 번 더 눌러주세요.");
     setProspectRefresh((n) => n + 1);
   }
 
