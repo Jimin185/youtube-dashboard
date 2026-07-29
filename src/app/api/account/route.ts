@@ -103,20 +103,27 @@ export async function POST(req: Request) {
     await testImapConnection(account);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    // Gmail이 로그인을 거부하면 imapflow는 'Command failed' 류의 모호한 메시지를 준다 → 친절하게 번역
+    // 로그인 거부 시 imapflow는 'Command failed' 류의 모호한 메시지를 준다 → 서버별로 친절하게 번역
     const isAuthError = /command failed|authenticat|invalid credentials|login|application-specific/i.test(msg);
     const isGmailHost = account.imapHost.includes("gmail");
     const isGmailAddr = account.email.endsWith("@gmail.com");
     let friendly: string;
-    if (isAuthError) {
+    if (isAuthError && isGmailHost) {
       friendly =
         `Gmail이 로그인을 거부했습니다 (시도한 계정: ${account.email}). 순서대로 확인해 주세요: ` +
         `① 맨 위 '메일 주소' 칸에는 실제 Gmail 주소가 들어가야 해요` +
-        (isGmailHost && !isGmailAddr
+        (!isGmailAddr
           ? ` — 지금은 Gmail 주소가 아닌 것 같아요! 회사 메일은 아래 '발신 주소' 칸에만 넣어주세요.`
           : `.`) +
         ` ② 비밀번호는 Gmail 로그인 비밀번호가 아니라, 그 Gmail 계정의 2단계 인증을 켠 뒤 ` +
         `myaccount.google.com/apppasswords 에서 만든 16자리 '앱 비밀번호'여야 합니다.`;
+    } else if (isAuthError) {
+      friendly =
+        `메일 서버(${account.imapHost})가 로그인을 거부했습니다 (시도한 계정: ${account.email}). ` +
+        `확인사항: ① 비밀번호가 '메일 전용 비밀번호'(외부 메일 프로그램용)인지 ② 그 서버에서 IMAP 사용이 허용돼 있는지 ` +
+        `— 하이웍스라면 관리자가 IMAP을 꺼놨을 수 있어요 (POP3만 허용된 경우에도 이 오류가 납니다).`;
+    } else if (/getaddrinfo|ENOTFOUND|EAI_AGAIN/i.test(msg)) {
+      friendly = `서버 주소(${account.imapHost})를 찾을 수 없습니다. 고급 설정의 IMAP 서버 주소를 확인해 주세요.`;
     } else {
       friendly = `메일 서버 접속에 실패했습니다: ${msg}`;
     }
