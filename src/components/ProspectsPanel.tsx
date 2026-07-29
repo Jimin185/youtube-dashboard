@@ -165,26 +165,38 @@ export default function ProspectsPanel({ onCompose, refreshKey, onCountChange }:
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
       const norm = (v: unknown) => String(v ?? "").trim();
-      const pick = (r: Record<string, unknown>, keys: string[]) => {
+      const pick = (r: Record<string, unknown>, keys: string[], exclude: string[] = []) => {
         for (const k of keys) {
-          const hit = Object.keys(r).find((h) => h.replace(/\s/g, "").toLowerCase().startsWith(k.toLowerCase()));
+          const hit = Object.keys(r).find((h) => {
+            const n = h.replace(/\s/g, "").toLowerCase();
+            return n.startsWith(k.toLowerCase()) && !exclude.some((x) => n.includes(x));
+          });
           if (hit && norm(r[hit])) return norm(r[hit]);
         }
         return "";
       };
+      const isEmail = (s: string) => /^\S+@\S+\.\S+$/.test(s);
       const parsed = rows
         .map((r) => ({
-          clientName: pick(r, ["클라이언트", "회사", "client", "company"]),
-          contactName: pick(r, ["담당자", "이름", "contact", "name"]),
-          contactEmail: pick(r, ["이메일", "메일", "email"]),
+          clientName: pick(r, ["클라이언트", "회사", "client", "company"], ["메일", "email", "사이트", "url"]),
+          contactName: pick(r, ["담당자", "이름", "contact", "name"], ["메일", "email"]),
+          // 공식이메일 열을 먼저 찾은 뒤 (이메일 열과 접두어가 겹치므로) 남는 이메일 열을 담당자 이메일로
           officialEmail: pick(r, ["공식이메일", "공식메일"]),
+          contactEmail: pick(r, ["담당자이메일", "이메일", "메일", "email"]),
           website: pick(r, ["공식사이트", "사이트", "website", "url"]),
           memo: pick(r, ["메모", "비고", "memo", "note"]),
           importance: Number(pick(r, ["중요도", "importance"])) || 0,
         }))
-        .filter((r) => /\S+@\S+\.\S+/.test(r.contactEmail) && !r.clientName.startsWith("(예시)"));
+        // 담당자 이메일 또는 공식이메일 중 하나만 있으면 등록 가능
+        .filter(
+          (r) =>
+            (isEmail(r.contactEmail) || isEmail(r.officialEmail)) &&
+            !r.clientName.startsWith("(예시)")
+        );
       if (parsed.length === 0) {
-        setNotice("파일에서 이메일이 있는 행을 찾지 못했습니다. 템플릿 양식을 확인해 주세요.");
+        setNotice(
+          "이메일이 있는 행을 찾지 못했습니다. '이메일' 또는 '공식이메일' 열 중 하나는 채워져 있어야 해요."
+        );
         return;
       }
       const res = await fetch("/api/prospects", {
@@ -197,9 +209,10 @@ export default function ProspectsPanel({ onCompose, refreshKey, onCountChange }:
         setNotice(data.error ?? "업로드에 실패했습니다.");
         return;
       }
-      setNotice(
-        `✓ ${data.inserted}건 추가 완료` + (data.skipped > 0 ? ` (중복 ${data.skipped}건 건너뜀)` : "")
-      );
+      const parts = [`✓ ${data.inserted}건 추가 완료`];
+      if (data.skipped > 0) parts.push(`중복 ${data.skipped}건 건너뜀`);
+      if (data.invalid > 0) parts.push(`이메일 없는 ${data.invalid}건 제외`);
+      setNotice(parts.join(" · "));
       load();
     } catch {
       setNotice("파일을 읽지 못했습니다. .xlsx 또는 .csv 파일인지 확인해 주세요.");
@@ -348,6 +361,8 @@ export default function ProspectsPanel({ onCompose, refreshKey, onCountChange }:
                     <p>보낼 목록이 비어있습니다.</p>
                     <p className="text-xs">
                       위에서 직접 추가하거나, 엑셀 템플릿을 받아 작성한 뒤 업로드하세요.
+                      <br />
+                      필수는 <b>이메일 또는 공식이메일 중 하나</b>뿐, 나머지 칸은 비워도 됩니다.
                       <br />
                       메일을 보내면 (대시보드에서든 Gmail에서든) 자동으로 &quot;보낸 목록&quot;으로 이동합니다.
                     </p>

@@ -24,7 +24,7 @@ export async function GET() {
 const rowSchema = z.object({
   clientName: z.string().default(""),
   contactName: z.string().default(""),
-  contactEmail: z.string().email("이메일 형식이 올바르지 않습니다."),
+  contactEmail: z.string().default(""),
   officialEmail: z.string().default(""),
   website: z.string().default(""),
   memo: z.string().default(""),
@@ -33,7 +33,13 @@ const rowSchema = z.object({
 
 const bodySchema = z.object({ rows: z.array(rowSchema).min(1) });
 
-/** 보낼 목록 추가 (단건/일괄 공용). 이미 등록된 이메일은 건너뛴다 */
+const isEmail = (s: string) => /^\S+@\S+\.\S+$/.test(s);
+
+/**
+ * 보낼 목록 추가 (단건/일괄 공용).
+ * - 필수: 담당자 이메일 또는 공식이메일 중 하나 (담당자 이메일이 없으면 공식이메일로 발송)
+ * - 이미 등록된 이메일은 건너뛴다
+ */
 export async function POST(req: Request) {
   await ensureSchema();
   const userId = await getUserId();
@@ -49,19 +55,43 @@ export async function POST(req: Request) {
     );
   }
 
+  // 담당자 이메일이 없으면 공식이메일을 발송 주소로 사용
+  let invalid = 0;
+  const normalized = parsed.data.rows.map((r) => {
+    const contact = r.contactEmail.trim().toLowerCase();
+    const official = r.officialEmail.trim().toLowerCase();
+    const sendTo = isEmail(contact) ? contact : isEmail(official) ? official : "";
+    return {
+      ...r,
+      contactEmail: sendTo,
+      officialEmail: isEmail(official) ? official : "",
+    };
+  });
+
+  // 이메일이 하나도 없는 행 제외 + 요청 안 중복 제거
+  const seen = new Set<string>();
+  const rows = normalized.filter((r) => {
+    if (!r.contactEmail) {
+      invalid++;
+      return false;
+    }
+    if (seen.has(r.contactEmail)) return false;
+    seen.add(r.contactEmail);
+    return true;
+  });
+  const requestDup = normalized.length - invalid - rows.length;
+
+  if (rows.length === 0) {
+    return NextResponse.json(
+      { error: "이메일(담당자 또는 공식이메일)이 있는 행이 없습니다. 둘 중 하나는 꼭 입력해 주세요." },
+      { status: 400 }
+    );
+  }
+
   const db = getDb();
   const now = new Date();
 
-  // 중복 제거: 요청 안 중복 + 이미 등록된 이메일(대기/발송 모두) 스킵
-  const seen = new Set<string>();
-  const rows = parsed.data.rows
-    .map((r) => ({ ...r, contactEmail: r.contactEmail.trim().toLowerCase() }))
-    .filter((r) => {
-      if (seen.has(r.contactEmail)) return false;
-      seen.add(r.contactEmail);
-      return true;
-    });
-
+  // 이미 등록된 이메일(대기/발송 모두) 스킵
   const emails = rows.map((r) => r.contactEmail);
   const existing = await db
     .select({ contactEmail: prospects.contactEmail })
@@ -77,7 +107,7 @@ export async function POST(req: Request) {
         clientName: r.clientName.trim(),
         contactName: r.contactName.trim(),
         contactEmail: r.contactEmail,
-        officialEmail: r.officialEmail.trim(),
+        officialEmail: r.officialEmail,
         website: r.website.trim(),
         memo: r.memo.trim(),
         importance: r.importance,
@@ -89,6 +119,7 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     inserted: toInsert.length,
-    skipped: rows.length - toInsert.length + (parsed.data.rows.length - rows.length),
+    skipped: rows.length - toInsert.length + requestDup,
+    invalid,
   });
 }
