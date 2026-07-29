@@ -181,6 +181,26 @@ export default function ProspectsPanel({ onCompose, refreshKey, onCountChange, o
     load();
   }
 
+  /** "이미 보낸 곳" 수동 처리: 보낼 목록 → 보낸 목록으로 이동 */
+  async function moveToOutbound(id: number, moveTo: string) {
+    const res = await fetch(`/api/prospects/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ moveTo }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setNotice(data.error ?? "이동에 실패했습니다.");
+      return;
+    }
+    const label =
+      moveTo === "replied" ? "답변수신" : moveTo === "closed" ? "완료" : "보냄(답변 대기중)";
+    setNotice(`✓ 보낸 목록으로 이동했습니다 (상태: ${label}) — '보낸 목록' 탭에서 차수/발송일을 확인하세요.`);
+    setItems((prev) => prev.filter((it) => it.id !== id));
+    load();
+    onImported();
+  }
+
   function downloadTemplate() {
     const ws = XLSX.utils.aoa_to_sheet([
       HEADERS,
@@ -437,17 +457,18 @@ export default function ProspectsPanel({ onCompose, refreshKey, onCountChange, o
               <th className="px-2 py-2.5 text-left w-44">공식이메일</th>
               <th className="px-2 py-2.5 text-left w-36">공식사이트</th>
               <th className="px-2 py-2.5 text-left">메모</th>
+              <th className="px-2 py-2.5 text-left w-28">상태</th>
               <th className="px-2 py-2.5 w-10"></th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={9} className="text-center py-14 text-slate-400">불러오는 중...</td>
+                <td colSpan={10} className="text-center py-14 text-slate-400">불러오는 중...</td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={9} className="text-center py-14 text-slate-400">
+                <td colSpan={10} className="text-center py-14 text-slate-400">
                   <div className="space-y-1.5">
                     <p>보낼 목록이 비어있습니다.</p>
                     <p className="text-xs">
@@ -502,6 +523,22 @@ export default function ProspectsPanel({ onCompose, refreshKey, onCountChange, o
                   </td>
                   <td className="px-2 py-2">
                     <EditableCell value={p.memo} placeholder="메모" onSave={(v) => patch(p.id, { memo: v })} />
+                  </td>
+                  <td className="px-2 py-2">
+                    {/* 이미 보낸 곳이면 여기서 바로 보낸 목록으로 이동 */}
+                    <select
+                      value="pending"
+                      onChange={(e) => {
+                        if (e.target.value !== "pending") moveToOutbound(p.id, e.target.value);
+                      }}
+                      title="이미 보냈다면 여기서 상태를 바꾸세요 — 보낸 목록으로 이동합니다"
+                      className="rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-xs font-medium cursor-pointer border-0 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    >
+                      <option value="pending">보낼예정</option>
+                      <option value="active">보냄 → 이동</option>
+                      <option value="replied">답변수신 → 이동</option>
+                      <option value="closed">완료 → 이동</option>
+                    </select>
                   </td>
                   <td className="px-2 py-2 text-center">
                     <button
