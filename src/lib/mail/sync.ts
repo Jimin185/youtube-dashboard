@@ -4,6 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { getDb, ensureSchema, schema } from "../db";
 import { decrypt } from "../crypto";
 import { normalizeSubject } from "../outbound";
+import { Pop3Client } from "./pop3";
 import type { MailAccount } from "../db/schema";
 
 const { mailAccounts, outbounds, messages } = schema;
@@ -15,9 +16,17 @@ interface MailboxState {
 interface SyncState {
   sent?: MailboxState;
   inbox?: MailboxState;
+  pop?: { seen: string[] }; // POP3 모드: 처리한 메일 고유 ID 목록
 }
 
 const FIRST_SYNC_DAYS = 90; // 최초 연동 시 최근 90일까지만 수집
+
+/** 수신 서버가 POP3인지 (하이웍스 등 IMAP 미지원 서버) */
+export function isPop3Account(account: MailAccount): boolean {
+  return (
+    account.imapPort === 995 || account.imapPort === 110 || /(^|\.)pop3?s?\./i.test(account.imapHost)
+  );
+}
 
 function addrList(a: AddressObject | AddressObject[] | undefined): { name: string; address: string }[] {
   if (!a) return [];
@@ -356,12 +365,105 @@ export interface SyncResult {
   error?: string;
 }
 
+/** 헤더만 파싱해서 답변 후보인지 판단 (POP3 프리필터) */
+async function isReplyCandidate(
+  account: MailAccount,
+  headerParsed: ParsedMail
+): Promise<boolean> {
+  const db = getDb();
+  const myDomain = account.email.split("@")[1]?.toLowerCase() ?? "";
+  const from = addrList(headerParsed.from)[0]?.address ?? "";
+  if (!from || from === account.email.toLowerCase() || from.endsWith(`@${myDomain}`)) return false;
+  if (await isKnownMessageId(headerParsed.messageId)) return false;
+  // 최초 동기화 범위 밖의 오래된 메일은 제외
+  if (headerParsed.date && Date.now() - headerParsed.date.getTime() > FIRST_SYNC_DAYS * 86400_000)
+    return false;
+  const refIds = refIdsOf(headerParsed);
+  if (refIds.length > 0) {
+    const hit = await db
+      .select({ id: messages.id })
+      .from(messages)
+      .where(inArray(messages.messageId, refIds))
+      .limit(1);
+    if (hit.length > 0) return true;
+  }
+  const o = await db
+    .select({ id: outbounds.id })
+    .from(outbounds)
+    .where(and(eq(outbounds.accountId, account.id), eq(outbounds.contactEmail, from)))
+    .limit(1);
+  return o.length > 0;
+}
+
+/**
+ * POP3 동기화 (하이웍스 등): 받은편지함만 읽어 답장을 감지한다.
+ * 보낸편지함은 POP3로 접근 불가 → 발송 기록은 대시보드 발송/엑셀 업로드로 관리.
+ */
+async function syncAccountPop3(
+  account: MailAccount,
+  result: SyncResult,
+  deadline: number
+): Promise<void> {
+  const db = getDb();
+  const state: SyncState = JSON.parse(account.syncState || "{}");
+  const seen = new Set(state.pop?.seen ?? []);
+
+  const client = new Pop3Client();
+  try {
+    await client.connect(account.imapHost, account.imapPort);
+    await client.login(account.username, decrypt(account.passwordEnc));
+    const list = await client.uidl();
+    const fresh = list.filter((m) => !seen.has(m.uid));
+
+    for (const m of fresh) {
+      if (Date.now() > deadline) {
+        result.partial = true;
+        break;
+      }
+      // 헤더만 먼저 받아 관련 메일인지 확인
+      const headerRaw = await client.top(m.num);
+      const headerParsed = await simpleParser(headerRaw);
+      if (await isReplyCandidate(account, headerParsed)) {
+        const raw = await client.retr(m.num);
+        const parsed = await simpleParser(raw);
+        await ingestReceivedMail(account, parsed);
+        result.receivedFetched++;
+      }
+      seen.add(m.uid);
+    }
+
+    state.pop = { seen: [...seen] };
+    await db
+      .update(mailAccounts)
+      .set({ syncState: JSON.stringify(state), lastSyncAt: new Date(), lastSyncError: null })
+      .where(eq(mailAccounts.id, account.id));
+  } finally {
+    await client.quit();
+  }
+}
+
 /** 계정 1개 동기화: 보낸편지함 → 아웃바운드 수집, 받은편지함 → 답변 매칭 */
 export async function syncAccount(account: MailAccount): Promise<SyncResult> {
   await ensureSchema();
   const db = getDb();
   const result: SyncResult = { accountId: account.id, sentFetched: 0, receivedFetched: 0 };
   const deadline = Date.now() + SYNC_TIME_BUDGET_MS;
+
+  // POP3 서버(하이웍스 등)는 별도 경로로
+  if (isPop3Account(account)) {
+    try {
+      await syncAccountPop3(account, result, deadline);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[sync-pop3] account=${account.email} error=${msg}`);
+      result.error = msg;
+      await db
+        .update(mailAccounts)
+        .set({ lastSyncError: msg, lastSyncAt: new Date() })
+        .where(eq(mailAccounts.id, account.id));
+    }
+    return result;
+  }
 
   let client: ImapFlow | null = null;
   try {
@@ -459,8 +561,18 @@ export async function syncAccount(account: MailAccount): Promise<SyncResult> {
   return result;
 }
 
-/** IMAP 접속 테스트 (설정 화면의 '연결 테스트' 버튼용) */
+/** 수신 서버 접속 테스트 (설정 화면의 '연결 테스트' 버튼용) — IMAP/POP3 자동 구분 */
 export async function testImapConnection(account: MailAccount): Promise<void> {
+  if (isPop3Account(account)) {
+    const client = new Pop3Client();
+    try {
+      await client.connect(account.imapHost, account.imapPort);
+      await client.login(account.username, decrypt(account.passwordEnc));
+    } finally {
+      await client.quit();
+    }
+    return;
+  }
   const client = await openImap(account);
   try {
     await client.list();

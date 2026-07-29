@@ -6,6 +6,7 @@ import { desc, eq } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import { decrypt } from "../crypto";
 import { renderTemplate } from "../outbound";
+import { isPop3Account } from "./sync";
 import type { MailAccount, Outbound } from "../db/schema";
 
 const { outbounds, messages } = schema;
@@ -38,6 +39,8 @@ async function appendToSentFolder(account: MailAccount, raws: Buffer[]): Promise
   if (raws.length === 0) return;
   // Gmail은 SMTP로 보낸 메일을 자동으로 보낸편지함에 저장하므로 중복 저장하지 않음
   if (account.smtpHost.toLowerCase().includes("gmail")) return;
+  // POP3 수신 계정(하이웍스 등)은 IMAP 저장이 불가능
+  if (isPop3Account(account)) return;
   const client = new ImapFlow({
     host: account.imapHost,
     port: account.imapPort,

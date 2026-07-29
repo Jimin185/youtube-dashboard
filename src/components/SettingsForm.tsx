@@ -135,18 +135,18 @@ export default function SettingsForm({ loginEmail }: { loginEmail: string }) {
 
         <form onSubmit={save} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Gmail 주소</label>
+            <label className="block text-sm font-medium mb-1">메일 주소 (Gmail 또는 하이웍스)</label>
             <input
               type="email"
               required
               value={form.email}
               onChange={(e) => set("email", e.target.value)}
-              placeholder="name@gmail.com"
+              placeholder="name@gmail.com 또는 회사메일"
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">앱 비밀번호 (16자리)</label>
+            <label className="block text-sm font-medium mb-1">앱 비밀번호 (하이웍스는 메일 전용 비밀번호)</label>
             <input
               type="password"
               required
@@ -236,9 +236,47 @@ export default function SettingsForm({ loginEmail }: { loginEmail: string }) {
             {advanced ? "고급 설정 접기" : "고급 설정 (Gmail이 아닌 다른 메일 사용 시)"}
           </button>
           {advanced && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setForm((f) => ({
+                      ...f,
+                      imapHost: "pop3s.hiworks.com",
+                      imapPort: "995",
+                      smtpHost: "smtps.hiworks.com",
+                      smtpPort: "465",
+                    }))
+                  }
+                  className="rounded-lg border border-emerald-300 text-emerald-700 px-3 py-1.5 text-xs hover:bg-emerald-50"
+                >
+                  🏢 하이웍스 서버로 채우기 (POP3)
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setForm((f) => ({
+                      ...f,
+                      imapHost: "imap.gmail.com",
+                      imapPort: "993",
+                      smtpHost: "smtp.gmail.com",
+                      smtpPort: "465",
+                    }))
+                  }
+                  className="rounded-lg border border-slate-300 text-slate-600 px-3 py-1.5 text-xs hover:bg-slate-50"
+                >
+                  Gmail 서버로 되돌리기
+                </button>
+              </div>
+              <p className="text-xs text-slate-400">
+                하이웍스는 IMAP이 없어 POP3로 연결됩니다. 비밀번호 칸에는 하이웍스의{" "}
+                <b>메일 전용 비밀번호</b>를 넣어주세요. (POP3 방식은 받은편지함만 읽으므로, 과거 보낸
+                이력은 엑셀 업로드로 등록하고 발송은 대시보드에서 하시면 됩니다.)
+              </p>
+              <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium mb-1">IMAP 서버 (수신)</label>
+                <label className="block text-xs font-medium mb-1">수신 서버 (IMAP/POP3)</label>
                 <input
                   value={form.imapHost}
                   onChange={(e) => set("imapHost", e.target.value)}
@@ -246,7 +284,7 @@ export default function SettingsForm({ loginEmail }: { loginEmail: string }) {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1">IMAP 포트</label>
+                <label className="block text-xs font-medium mb-1">수신 포트</label>
                 <input
                   value={form.imapPort}
                   onChange={(e) => set("imapPort", e.target.value)}
@@ -268,6 +306,7 @@ export default function SettingsForm({ loginEmail }: { loginEmail: string }) {
                   onChange={(e) => set("smtpPort", e.target.value)}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 />
+              </div>
               </div>
             </div>
           )}
